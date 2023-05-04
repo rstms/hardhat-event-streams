@@ -1,5 +1,5 @@
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 __author__ = "Matt Krueger"
 __email__ = "mkrueger@rstms.net"
-__timestamp__ = "2023-05-04 02:30:33-05:00"
-__commit__ = "ea85d56877de58fd6a76eabc48197f818c9107f4"
+__timestamp__ = "2023-05-04 02:31:55-05:00"
+__commit__ = "1730a7c88c104e22c09cceea9462970e64f96032"
