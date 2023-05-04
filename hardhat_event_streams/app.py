@@ -1,28 +1,49 @@
-# hardhat streams API client
+# hardhat streams API server
 
+# import databases
+import logging
+from typing import Dict
+from uuid import UUID
 
-import databases
-import sqlalchemy
-from pydantic import BaseModel
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
+from sqlmodel import Session, SQLModel, create_engine, select
 
-# SQLAlchemy specific code, as with any other app
-DATABASE_URL = "sqlite:///./test.db"
-
+from .apikey import get_api_key
+from .schema import (
+    ContractAddresses,
+    EventStream,
+    HistoryOptions,
+    HistoryReplayOptions,
+    Setting,
+    StreamsResponse,
+    StreamStatus,
+)
+from .settings import DATABASE_URL, SQL_ECHO
 from .version import __version__
 
-DEFAULT_GATEWAY = "http://localhost:8892"
+# import sqlalchemy
+
+
+class APIException(Exception):
+    pass
+
+
+# SQLAlchemy specific code, as with any other app
 
 description = """a functional clone of moralis streams service for a hardhat forked testnet"""
 
 app = FastAPI(
-    title='hardhat event streams',
+    title="hardhat event streams",
     description=description,
     version=__version__,
     dependencies=[Depends(get_api_key)],
 )
 
 log = logging.getLogger(__name__)
+
+engine = create_engine(DATABASE_URL, echo=SQL_ECHO, connect_args=dict(check_same_thread=False))
+
 
 @app.exception_handler(Exception)
 async def system_exception_handler(request: Request, exc: Exception):
@@ -37,91 +58,113 @@ async def system_exception_handler(request: Request, exc: Exception):
 
 @app.on_event("startup")
 async def startup_event():
-    log.debug('startup')
+    log.debug("startup")
+    SQLModel.metadata.create_all(engine)
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
     log.debug("shutdown")
 
-@app.get("/create")
+
+@app.get("create", response_model=StreamsResponse)
 async def create_stream(
     request: EventStream,
 ):
-    log.debug("--> /create {request}")
+    with Session(engine) as session:
+        session.add(request)
+        session.commit()
+        breakpoint()
+        pass
 
-    log.debug(f"<-- {result}")
-    return result
+    return StreamsResponse(result=False, detail="unimplemented")
 
-@app.patch("/stream/{stream_id}")
-def update_stream(self, stream_id, request: ):
+
+@app.patch("stream/{stream_id}", response_model=StreamsResponse)
+def update_stream(stream_id: UUID, request: EventStream):
     """modify a stream"""
-    stream_id = params["id"]
-    return self.patch(api_key, f"/stream/{stream_id}", json=body)
+    return StreamsResponse(result=False, detail="unimplemented")
 
-def delete_stream(self, api_key, params):
+
+@app.delete("stream/{stream_id}", response_model=StreamsResponse)
+def delete_stream(params):
     """delete a stream"""
-    stream_id = params["id"]
-    return self.delete(api_key, f"/stream/{stream_id}")
+    return StreamsResponse(result=False, detail="unimplemented")
 
-def _addreses(self, body):
-    address = body["address"]
-    if not isinstance(address, list):
-        address = [address]
-    return dict(addresses=address)
 
-def add_address_to_stream(self, api_key, params, body):
+@app.post("stream/{stream_id}/address", response_model=StreamsResponse)
+def add_address_to_stream(stream_id: UUID, request: ContractAddresses):
     """add a contract address to a stream"""
-    stream_id = params["id"]
-    return self.post(api_key, f"/stream/{stream_id}/address", json=self._addresses(body))
+    return StreamsResponse(result=False, detail="unimplemented")
 
-def delete_address_from_stream(self, api_key, params, body):
+
+@app.delete("stream/{stream_id}/address", response_model=StreamsResponse)
+def delete_address_from_stream(stream_id: UUID, request: ContractAddresses):
     """delete a contract address from a stream"""
-    stream_id = params["id"]
-    return self.delete(api_key, f"/stream/{stream_id}/address", json=self._addresses(body))
+    return StreamsResponse(result=False, detail="unimplemented")
 
-def update_stream_status(self, api_key, params, body):
+
+@app.post("/stream/{stream_id}/status", response_model=StreamsResponse)
+def update_stream_status(stream_id: UUID, request: StreamStatus):
     """change a stream status"""
-    stream_id = params["id"]
-    status = dict(status=body["status"])
-    return self.post(api_key, f"/stream/{stream_id}/status", json=status)
+    return StreamsResponse(result=False, detail="unimplemented")
 
-def get_streams(self, api_key, params):
+
+@app.get("/streams", response_model=StreamsResponse)
+def get_streams():
     """return a list of streams"""
-    return self.get(api_key, "/streams", paged=True)
+    return StreamsResponse(result=False, detail="unimplemented")
 
-def get_stream(self, api_key, params):
-    """return a specific stream"""
-    stream_id = params["id"]
-    return self.get(api_key, f"/stream/{stream_id}")
 
-def get_addresses(self, api_key, params):
-    """return list of stream addresses"""
-    stream_id = params["id"]
-    return self.get(api_key, f"/stream/{stream_id}/addresses")
+@app.get("/stream/{stream_id}", response_model=StreamsResponse)
+def get_stream(stream_id: UUID):
+    return StreamsResponse(result=False, detail="unimplemented")
 
-def get_history(self, api_key, params):
+
+@app.get("/stream/{stream_id}/addresses", response_model=StreamsResponse)
+def get_addresses(stream_id: UUID):
+    return StreamsResponse(result=False, detail="unimplemented")
+
+
+@app.get("/history", response_model=StreamsResponse)
+def get_history(options: HistoryOptions):
     """get stream history"""
-    options = dict(exclude_payload=params["excludePayload"])
-    return self.get(api_key, "/history", paged=True, json=options)
+    return StreamsResponse(result=False, detail="unimplemented")
 
-def replay_history(self, api_key, params):
+
+@app.get("/history/replay", response_model=StreamsResponse)
+def replay_history(ids: HistoryReplayOptions):
     """request history replay"""
-    ids = dict(stream=params["streamId"], history=params["id"])
-    return self.post(api_key, "/history/replay", paged=True, json=ids)
+    return StreamsResponse(result=False, detail="unimplemented")
 
-def get_settings(self, api_key):
+
+@app.get("/settings", response_model=Dict)
+def get_settings():
     """return global config variables"""
-    return self.get(api_key, "/settings")
+    with Session(engine) as session:
+        settings = session.exec(select(Setting)).all()
+    return {s.key: s.value for s in settings}
 
-def set_settings(self, api_key, body):
-    """set a global config variable"""
-    return self.post(api_key, "/settings", json=body)
 
-def get_stats(self, api_key):
+@app.post("/settings", response_model=Dict)
+def set_settings(values: Dict):
+    """set global config values"""
+    with Session(engine) as session:
+        for k, v in values.items():
+            setting = Setting(key=k, value=v)
+            session.add(setting)
+        session.commit()
+        session.refresh(setting)
+    return {setting.key: setting.value}
+
+
+@app.get("stats", response_model=StreamsResponse)
+def get_stats(api_key):
     """return global stats"""
-    return self.get(api_key, "/stats")
+    return StreamsResponse(result=dict(active=True), detail="global stats")
 
-def get_stats_by_stream_id(self, api_key, params):
+
+@app.get("stats/{stream_id}", response_model=StreamsResponse)
+def get_stats_by_stream_id(stream_id: UUID):
     """return stream stats"""
-    stream_id = params["id"]
-    return self.get(api_key, f"stats/{stream_id}")
+    return StreamsResponse(result=False, detail="unimplemented")

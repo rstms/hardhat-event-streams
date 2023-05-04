@@ -4,7 +4,7 @@
 project := $(shell tq -r .project.name pyproject.toml)
 module := $(shell tq -r .tool.flit.module.name pyproject.toml)
 version := $(shell cat VERSION)
-src_dirs := $(module) $(module)/dependencies $(module)/routers $(module)/image $(module)/webhook tests 
+src_dirs := $(module) tests
 python_src := $(foreach dir,$(src_dirs),$(wildcard $(dir)/*.py))
 other_src := $(makefiles) pyproject.toml
 src := $(python_src) $(other_src)

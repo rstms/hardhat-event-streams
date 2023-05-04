@@ -5,6 +5,7 @@ requires_python = ">=3.10"
 
 [project]
 name = "hardhat-event-streams"
+version = "0.0.1"
 authors = [{name = "Matt Krueger", email = "mkrueger@rstms.net"}]
 readme = {file = "README.md", content-type = "text/markdown"}
 license = {file = "LICENSE"}
@@ -15,11 +16,13 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
   ]
-dynamic = ["version", "description"]
+dynamic = ["description"]
 
 dependencies = [
     "fastapi",
-    "uvicorn"
+    "uvicorn",
+    "sqlmodel",
+    "eth-utils"
   ]
 
 [tool.flit.module]
@@ -38,6 +41,7 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "pytest-datadir",
+    "httpx"
   ]
 docs = [
     "m2r2",
@@ -56,4 +60,4 @@ line-length = 120
 profile = "black"
 
 [project.scripts]
-hes = "hadhat_event_streams.cli:cli"
+hes = "hardhat_event_streams.cli:cli"

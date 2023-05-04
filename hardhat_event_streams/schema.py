@@ -1,15 +1,79 @@
 # hardhat event stream schema
 
-from pydantic import BaseModel
-from typing import List, Optional
+import enum
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
+from uuid import UUID
+
+from eth_utils import humanize_bytes, humanize_hash
+from pydantic import BaseModel, root_validator, validator
+from sqlmodel import Field, SQLModel
+
+from .validate import validate_bytes, validate_uuid
+
+
+class EventStreamsEnum(enum.Enum):
+    @classmethod
+    def values(cls):
+        return [m.value for m in cls.__members__.values()]
+
+
+class EventStreamsStatusEnum(EventStreamsEnum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+    ERROR = "error"
+    TERMINATED = "terminated"
+
+
+class EventStreamsRegionEnum(EventStreamsEnum):
+    US_EAST_1 = "us-east-1"
+    US_WEST_2 = "us-west-2"
+    EU_CENTRAL_1 = "eu-central-1"
+    AP_SOUTHEAST_1 = "ap-southeast-1"
+
+
+class ContractEventTypeEnum(EventStreamsEnum):
+    TOKEN_TRANSFER = "TOKEN_TRANSFER"
+    EVENT_RECORDED = "EVENT_RECORDED"
+
 
 class VBaseModel(BaseModel):
     pass
 
-class TableModel(VBaseModel):
-    id: Optional[id] = Field(None, description="row id")
 
-class EventStream(VBaseModel):
+class StreamsResponse(VBaseModel):
+    result: Any = Field(True, description="return data")
+    cursor: str = Field("", description="paging cursor")
+    total: int = Field(None, description="total number of results")
+
+
+class ContractAddresses(VBaseModel):
+    addresses: List[str] = Field(..., description="list of contract addresses")
+
+
+class HistoryOptions(VBaseModel):
+    excludePayload: bool = Field(True, description="exclude payload from results if True")
+
+
+class HistoryReplayOptions(VBaseModel):
+    streamId: UUID = Field(..., description="stream for which history is requested")
+    id: UUID = Field(..., description="requested history id")
+
+
+class StreamStatus(VBaseModel):
+    status: EventStreamsStatusEnum = Field(..., description="stream status value")
+
+
+class SettingBase(SQLModel):
+    key: str = Field(..., description="setting name", index=True)
+    value: str = Field(..., description="setting value")
+
+
+class Setting(SettingBase, table=True):
+    id: Optional[int] = Field(None, primary_key=True)
+
+
+class EventStream(SQLModel):
     webhookUrl: str = Field(..., description="event receiver webhook URL")
     description: Optional[str] = Field("", description="user-defined identifier string")
     tag: Optional[str] = Field("", description="client identifier for event notification stream")
@@ -33,11 +97,12 @@ class EventStream(VBaseModel):
     def __repr__(self):
         return f"<EventStream: tag={self.tag} {self.webhookUrl}>"
 
-class ContractEvent(TableModel):
+
+class ContractEvent(SQLModel):
     contract_id: int = Field(None, description="DB id of event source contract")
     event_id: UUID = Field(None, description="unique id for each event update received")
     txn_hash: bytes = Field(None, description="event source transaction hash")
-    status: ContractEventStatusEnum = Field(..., description="event processing state")
+    event_type: ContractEventTypeEnum = Field(..., description="type of event")
     data: Dict = Field(..., description="event data as dict")
 
     def __repr__(self):
@@ -51,7 +116,7 @@ class ContractEvent(TableModel):
 class ContractEventUpdateBlock(VBaseModel):
     number: Union[int, Any] = Field(..., description="block number")
     hash: Optional[bytes] = Field(None, description="block hash")
-    timestamp: Optional[Union[datetime, Any]] = Field(None, description="block timestamp")
+    timestamp: Union[datetime, Any, None] = Field(None, description="block timestamp")
 
     @validator("number")
     def validate_number(cls, v, field):
@@ -170,7 +235,7 @@ class ContractEventUpdate(VBaseModel):
     retries: Optional[int] = Field(None, description="number of event notification retries")
     streamId: Union[UUID, Any] = Field(..., description="ID of stream delivering event notification")
     tag: Union[str, Any] = Field(..., description="client identifier for event notification stream")
-    txs: List[ContractEventUpdateTransaction] = Field(..., discription="transactions associate with event")
+    txs: List[ContractEventUpdateTransaction] = Field(..., description="transactions associate with event")
     txsInternal: List[ContractEventUpdateInternalTransaction] = Field(
         ..., description="internal transactions associated with event"
     )
@@ -196,7 +261,13 @@ class ContractEventUpdate(VBaseModel):
         return validate_uuid(cls, field, v, allow_none=True)
 
     def __repr__(self):
-        return f"<ContractEventUpdate: confirmed={self.confirmed} logs={len(self.logs)} txs={len(self.txs)} transfers={len(self.nftTransfers)}>"
+        return (
+            "<ContractEventUpdate:"
+            f" confirmed={self.confirmed}"
+            f" logs={len(self.logs)}"
+            f" txs={len(self.txs)}"
+            f" transfers={len(self.nftTransfers)}>"
+        )
 
     def has_payload(self):
         return any(

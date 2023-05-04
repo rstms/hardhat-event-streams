@@ -7,38 +7,55 @@ import requests
 DEFAULT_GATEWAY = "http://localhost:8892"
 
 
-class HardhatEventBase:
-    url = os.environ["HARDHAT_EVENTS_GATEWAY", DEFAULT_GATEWAY]
+class HardhatStreams:
+    requests = None
+    url = None
+    requests = requests
+
+    def __init__(self, _requests=None, _url=None):
+        self.__class__.url = _url or os.environ.get("HARDHAT_EVENTS_GATEWAY", DEFAULT_GATEWAY)
+        self.__class__.requests = _requests or requests
+
+    def __getattr__(self, name):
+        if name == "evm_streams":
+            return HardhatEventsStreams()
+        elif name == "history":
+            return HardhatEventsHistory()
+        elif name == "project":
+            return HardhatEventsProject()
+        elif name == "stats":
+            return HardhatEventsStats()
+        else:
+            raise NameError(f"{name=}")
 
     def post(self, api_key, path, **kwargs):
-        return self.request(requests.post, path, **kwargs)
+        return self.request(api_key, requests.post, path, **kwargs)
 
     def patch(self, api_key, path, **kwargs):
-        return self.request(requests.patch, path, **kwargs)
+        return self.request(api_key, requests.patch, path, **kwargs)
 
     def delete(self, api_key, path, **kwargs):
-        return self.request(requests.delete, path, **kwargs)
+        return self.request(api_key, requests.delete, path, **kwargs)
 
     def get(self, api_key, path, **kwargs):
-        return self.request(requests.get, path, **kwargs)
+        return self.request(api_key, requests.get, path, **kwargs)
 
     def request(self, api_key, func, path, **kwargs):
         paged = kwargs.pop("paged", False)
         kwargs["headers"] = {"x-api-key": api_key, "content-type": "application/json"}
-        return self.check(func(self.url + path, **kwargs), paged)
+        return self.check(self.requests.func(self.url + path, **kwargs), paged)
 
     def check(self, response, paged):
         response.raise_for_status()
         result = response.json()
-        ret = dict(result=result)
         if paged:
-            ret.update(dict(cursor="", total=len(result)))
-        return ret
+            result = dict(result=result, cursor="", total=len(result))
+        return result
 
 
-class HardhatEventStreams(HardhatEventBase):
-    def __init__(self, url=None):
-        super().init(url)
+class HardhatEventsStreams(HardhatStreams):
+    def __init__(self):
+        super().__init__()
 
     def create_stream(self, api_key, body):
         """create a stream"""
@@ -91,7 +108,10 @@ class HardhatEventStreams(HardhatEventBase):
         return self.get(api_key, f"/stream/{stream_id}/addresses")
 
 
-class HardhatEventsHistory(HardhatEventBase):
+class HardhatEventsHistory(HardhatStreams):
+    def __init__(self):
+        super().__init__()
+
     def get_history(self, api_key, params):
         """get stream history"""
         options = dict(exclude_payload=params["excludePayload"])
@@ -103,7 +123,10 @@ class HardhatEventsHistory(HardhatEventBase):
         return self.post(api_key, "/history/replay", paged=True, json=ids)
 
 
-class HardhatEventsProject(HardhatEventBase):
+class HardhatEventsProject(HardhatStreams):
+    def __init__(self):
+        super().__init__()
+
     def get_settings(self, api_key):
         """return global config variables"""
         return self.get(api_key, "/settings")
@@ -113,7 +136,10 @@ class HardhatEventsProject(HardhatEventBase):
         return self.post(api_key, "/settings", json=body)
 
 
-class HardhatEventsStats(HardhatEventBase):
+class HardhatEventsStats(HardhatStreams):
+    def __init__(self):
+        super().__init__()
+
     def get_stats(self, api_key):
         """return global stats"""
         return self.get(api_key, "/stats")
@@ -122,3 +148,6 @@ class HardhatEventsStats(HardhatEventBase):
         """return stream stats"""
         stream_id = params["id"]
         return self.get(api_key, f"stats/{stream_id}")
+
+
+streams = HardhatStreams()
