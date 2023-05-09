@@ -152,3 +152,4 @@ postactivate
 .depends
 .secrets.json
 .fmt
+streams.db

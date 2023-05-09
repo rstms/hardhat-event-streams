@@ -1,44 +1,28 @@
 # seven_api Schema object formatter functions
 
-import json
 import re
 import uuid
 
 from hexbytes import HexBytes
 
+from . import json
+
 HEX_REGEX = "^0x[0-9a-fA-F]+$"
 
 
 def validate_json(field_name, value, expected_type, allow_none=True):
-    if value:
-        # if value is str, parse as json
-        if isinstance(value, (str, bytes)):
-            value = json.loads(value)
-
-        # type_check the decoded value
+    """given a json string or the expected type, return a json string"""
+    if value is None:
+        if not allow_none:
+            raise ValueError(f"{field_name}: missing required value")
+    elif isinstance(value, expected_type):
+        # if value is in expected type, return JSON dump
+        pass
+    elif isinstance(value, str):
+        # if value is str, decode as JSON and type_check
+        value = json.loads(value)
         if not isinstance(value, expected_type):
             raise TypeError(f"{field_name}:" f" expected {expected_type} got {type(value)}")
-
-    elif not allow_none:
-        raise ValueError(f"{field_name}: missing required value")
-
-    return value
-
-
-def validate_schema_json(field_name, schema_class, value, allow_none=True):
-    if value:
-        # if value is str, parse as json
-        if isinstance(value, (str, bytes)):
-            value = schema_class.parse_raw(value)
-        elif isinstance(value, dict):
-            value = schema_class.parse_obj(value)
-        if not isinstance(value, schema_class):
-            raise TypeError(
-                f"{field_name}:",
-                f" Expected {schema_class}, got {type(value)}",
-            )
-    elif not allow_none:
-        raise ValueError(f"{field_name}: missing required value")
     return value
 
 

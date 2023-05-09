@@ -3,7 +3,7 @@
 """functional clone of moralis streams service for a hardhat forked testnet"""
 
 from .cli import cli
-from .client import streams
+from .client import HardhatStreamsError, streams
 from .version import __version__
 
-__all__ = ["cli", "__version__", "streams"]
+__all__ = ["cli", "__version__", "streams", "HardhatStreamsError"]

@@ -6,10 +6,15 @@ from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
 from eth_utils import humanize_bytes, humanize_hash
-from pydantic import BaseModel, root_validator, validator
-from sqlmodel import Field, SQLModel
+from hexbytes import HexBytes
+from pydantic import AnyUrl
+from pydantic import BaseModel as _BaseModel
+from pydantic import root_validator, validator
+from sqlmodel import JSON, Column, Field
+from sqlmodel import SQLModel as _SQLModel
 
-from .validate import validate_bytes, validate_uuid
+from . import json
+from .validate import validate_bytes, validate_json, validate_uuid
 
 
 class EventStreamsEnum(enum.Enum):
@@ -37,30 +42,75 @@ class ContractEventTypeEnum(EventStreamsEnum):
     EVENT_RECORDED = "EVENT_RECORDED"
 
 
-class VBaseModel(BaseModel):
+class BaseModel(_BaseModel):
+    class Config:
+        json_loads = json.loads
+        use_enum_values = True
+        json_encoders = {
+            "bytes": lambda b: HexBytes(b).hex() if len(b) else "",
+            "AnyUrl": lambda u: str(u),
+            "UUID": lambda u: str(u),
+        }
+
+        arbitary_types_allowed = True
+
+
+class SQLModel(BaseModel, _SQLModel):
     pass
 
 
-class StreamsResponse(VBaseModel):
-    result: Any = Field(True, description="return data")
-    cursor: str = Field("", description="paging cursor")
-    total: int = Field(None, description="total number of results")
+class AddressBase(SQLModel):
+    address: bytes = Field(..., description="contract address")
+
+    @validator("address")
+    def validate_address(cls, v, field):
+        return validate_bytes(cls, field, 20, v)
 
 
-class ContractAddresses(VBaseModel):
-    addresses: List[str] = Field(..., description="list of contract addresses")
+class Address(AddressBase, table=True):
+    id: Optional[int] = Field(None, primary_key=True)
 
 
-class HistoryOptions(VBaseModel):
+class AddressMapBase(SQLModel):
+    address_id: int = Field(..., description="contract ID", foreign_key="address.id")
+    stream_id: int = Field(..., description="stream ID", foreign_key="eventstream.id")
+
+
+class AddressMap(AddressMapBase, table=True):
+    id: Optional[int] = Field(None, primary_key=True)
+
+
+class AddressRequest(BaseModel):
+    address: List[bytes] = Field(..., description="address or list of addresses")
+
+    @validator("address")
+    def validate_address_list(cls, v, field):
+        if not isinstance(v, (list, tuple)):
+            v = [v]
+        ret = [validate_bytes(cls, field, 20, _v) for _v in v]
+        return ret
+
+
+class AddressResponse(AddressRequest):
+    streamId: UUID = Field(..., description="ID of associated stream")
+
+    @validator("streamId")
+    def validate_stream_id(cls, v, field):
+        ret = validate_uuid(cls, field, v)
+        return ret
+
+
+class HistoryOptions(BaseModel):
     excludePayload: bool = Field(True, description="exclude payload from results if True")
+    id: UUID = Field(..., description="requested history id")
 
 
-class HistoryReplayOptions(VBaseModel):
+class HistoryReplayOptions(BaseModel):
     streamId: UUID = Field(..., description="stream for which history is requested")
     id: UUID = Field(..., description="requested history id")
 
 
-class StreamStatus(VBaseModel):
+class StreamStatus(BaseModel):
     status: EventStreamsStatusEnum = Field(..., description="stream status value")
 
 
@@ -73,12 +123,43 @@ class Setting(SettingBase, table=True):
     id: Optional[int] = Field(None, primary_key=True)
 
 
-class EventStream(SQLModel):
-    webhookUrl: str = Field(..., description="event receiver webhook URL")
+class JSONList(JSON):
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+
+    @classmethod
+    def validate(cls, v):
+        return validate_json("JSONList", v, list)
+
+    @classmethod
+    def __modify_schema(cls, field_schema):
+        field_schema.update(type="string", example='[{"key": "value"}]')
+
+
+class JSONDict(JSON):
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+
+    @classmethod
+    def validate(cls, v):
+        ret = validate_json("JSONDict", v, dict)
+        return ret
+
+    @classmethod
+    def __modify_schema(cls, field_schema):
+        field_schema.update(type="string", example='{"key": "value"}')
+
+
+class EventStreamBase(SQLModel):
+    webhookUrl: AnyUrl = Field(..., description="event receiver webhook URL")
     description: Optional[str] = Field("", description="user-defined identifier string")
     tag: Optional[str] = Field("", description="client identifier for event notification stream")
-    topic0: List[str] = Field(
-        ..., description="An Array of topic0’s in string-signature format ex: [‘FunctionName(address,uint256)’]"
+    topic0: JSONList = Field(
+        ...,
+        sa_column=Column(JSON),
+        description="An Array of topic0’s in string-signature format ex: [‘FunctionName(address,uint256)’]",
     )
     allAddresses: Optional[bool] = Field(False, description="request events for all addresses matching ABI and topic0")
     includeNativeTxs: Optional[bool] = Field(True, description="request native transaction events")
@@ -87,33 +168,88 @@ class EventStream(SQLModel):
     includeAllTxLogs: bool = Field(
         True, description="include all logs if at least one value in tx or log matches stream config"
     )
-    getNativeBalances: Optional[List[str]] = Field([], description="Include native balances matching trigger filter")
-    abi: List[Dict] = Field(..., description="contract abi")
-    advancedOptions: Optional[List[Any]] = Field([], description="advanced options (see moralis streams docs)")
-    chainIds: List[str] = Field(..., description="The ids of the chains for this stream in hex Ex: ['0x1','0x38']")
+    getNativeBalances: Optional[JSONList] = Field(
+        "[]", sa_column=Column(JSON), description="Include native balances matching trigger filter"
+    )
+    chainIds: JSONList = Field(
+        ..., sa_column=Column(JSON), description="The ids of the chains for this stream in hex Ex: ['0x1','0x38']"
+    )
+    abi: List[JSONDict] = Field(..., sa_column=Column(JSON), description="list of event abi JSON strings")
     demo: bool = Field(False, description="request demo mode")
-    triggers: Optional[List[Any]] = Field([], description="trigger objects (see moralis streams docs)")
+    triggers: Optional[JSONList] = Field(
+        "[]",
+        sa_column=Column(JSON),
+        description="list of json strings describing trigger objects (see moralis streams docs)",
+    )
+    advancedOptions: Optional[JSONList] = Field(
+        "[]",
+        sa_column=Column(JSON),
+        description="list of json strings describing  advanced options (see moralis streams docs)",
+    )
+    status: Optional[str] = Field("", description="Status Word")
+    statusMessage: Optional[str] = Field("", description="Detailed Status")
+    streamId: Optional[UUID] = Field(None, description="stream identifier GUID")
+
+    @validator("streamId")
+    def validate_stream_id(cls, v, field):
+        ret = validate_uuid(cls, field, v, allow_none=True)
+        return ret
 
     def __repr__(self):
-        return f"<EventStream: tag={self.tag} {self.webhookUrl}>"
+        return f"<EventStream: {str(self.streamId)} tag={self.tag} {self.webhookUrl}>"
 
 
-class ContractEvent(SQLModel):
-    contract_id: int = Field(None, description="DB id of event source contract")
-    event_id: UUID = Field(None, description="unique id for each event update received")
+class EventStream(EventStreamBase, table=True):
+    id: Optional[int] = Field(None, primary_key=True)
+
+
+class StreamResponse(EventStreamBase):
+    id: UUID = Field(..., description="UUID stream ID")
+
+    def __repr__(self):
+        return f"<Stream: {str(self.id)} tag={self.tag} {self.webhookUrl}>"
+
+    def __str__(self):
+        return repr(self)
+
+    @root_validator(pre=True)
+    def id_validator(cls, values):
+        values["id"] = values["streamId"]
+        return values
+
+
+class ContractEventBase(SQLModel):
+    contract_address: bytes = Field(None, description="address of event source contract")
+    event_hash: bytes = Field(None, description="event hash")
     txn_hash: bytes = Field(None, description="event source transaction hash")
-    event_type: ContractEventTypeEnum = Field(..., description="type of event")
-    data: Dict = Field(..., description="event data as dict")
+    data: JSONDict = Field(..., sa_column=Column(JSON), description="event data as json")
 
     def __repr__(self):
         return f"<ContractEvent[{self.id}] {self.status}>"
 
-    @validator("txn_hash")
+    @validator("contract_address")
+    def validate_address(cls, v, field):
+        return validate_bytes(cls, field, 20, v)
+
+    @validator("txn_hash", "event_hash")
     def validate_hash(cls, v, field):
         return validate_bytes(cls, field, 32, v)
 
+    @validator("data")
+    def validate_data(cls, v, field):
+        return validate_json("data", v, dict)
 
-class ContractEventUpdateBlock(VBaseModel):
+
+class ContractEvent(ContractEventBase, table=True):
+    id: Optional[int] = Field(None, primary_key=True)
+
+
+class EventResponse(BaseModel):
+    status: str = Field(..., description="status message")
+    count: int = Field(..., description="record count")
+
+
+class ContractEventUpdateBlock(BaseModel):
     number: Union[int, Any] = Field(..., description="block number")
     hash: Optional[bytes] = Field(None, description="block hash")
     timestamp: Union[datetime, Any, None] = Field(None, description="block timestamp")
@@ -134,7 +270,7 @@ class ContractEventUpdateBlock(VBaseModel):
         return f"block={humanize_hash(self.hash or b'')}"
 
 
-class ContractEventUpdateLog(VBaseModel):
+class ContractEventUpdateLog(BaseModel):
     logIndex: int = Field(..., description="log index in block")
     transactionHash: bytes = Field(..., description="hash of transaction emitting event")
     address: bytes = Field(..., description="address of contract emitting event")
@@ -149,7 +285,7 @@ class ContractEventUpdateLog(VBaseModel):
         return validate_bytes(cls, field, 32, v)
 
     @validator("address")
-    def validate_topic(cls, v, field):
+    def validate_address(cls, v, field):
         return validate_bytes(cls, field, 20, v)
 
     @validator("data")
@@ -160,7 +296,7 @@ class ContractEventUpdateLog(VBaseModel):
         return f"<log: contract={humanize_bytes(self.address)} txn={humanize_hash(self.transactionHash)}>"
 
 
-class ContractEventUpdateTransaction(VBaseModel):
+class ContractEventUpdateTransaction(BaseModel):
     hash: bytes = Field(None, description="transaction hash (32 bytes)")
     gas: int = Field(None, description="gas limit")
     gasPrice: int = Field(None, description="gas price")
@@ -196,7 +332,7 @@ class ContractEventUpdateTransaction(VBaseModel):
         return f"<txn: hash={humanize_hash(self.hash)}>"
 
 
-class ContractEventUpdateInternalTransaction(VBaseModel):
+class ContractEventUpdateInternalTransaction(BaseModel):
     from_address: bytes = Field(..., description="from address of transaction")
     to_address: bytes = Field(..., description="to address of transaction")
     value: int = Field(..., description="value transferred by transacition in WEI")
@@ -222,7 +358,7 @@ class ContractEventUpdateInternalTransaction(VBaseModel):
         return f"<internal_txn: hash={humanize_hash(self.transactionHash)}>"
 
 
-class ContractEventUpdate(VBaseModel):
+class ContractEventUpdate(BaseModel):
     abi: List[Dict] = Field(..., description="ABI of contract emitting event")
     block: ContractEventUpdateBlock = Field(..., description="block containing transaction emitting event")
     chainId: Optional[bytes] = Field(None, description="stream chain id")

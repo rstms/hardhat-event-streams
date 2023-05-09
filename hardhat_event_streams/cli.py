@@ -1,10 +1,11 @@
 # hardhat event streams cli
 import sys
+from pathlib import Path
 
 import click
 import uvicorn
 
-from . import settings
+from . import db, settings
 
 
 class Context:
@@ -50,39 +51,39 @@ def run(ctx):
     )
 
 
-@cli.group
+@cli.group(name="db")
 @click.pass_context
-def db(ctx):
+def db_group(ctx):
     """database commands"""
     pass
 
 
-@db.command
+@db_group.command
 @click.pass_context
 def init(ctx):
     """create database"""
-    pass
+    db.init_db()
 
 
-@db.command
+@db_group.command
 @click.pass_context
 def dump(ctx):
     """dump database to file"""
     pass
 
 
-@db.command
+@db_group.command
 @click.pass_context
 def load(ctx):
     """load database from file"""
     pass
 
 
-@db.command
+@db_group.command
 @click.pass_context
-def clear(ctx):
-    """clear database"""
-    pass
+def destroy(ctx):
+    """destroy database"""
+    Path(settings.DATABASE_FILE).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
