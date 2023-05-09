@@ -2,7 +2,6 @@ import shlex
 
 import pytest
 from click.testing import CliRunner
-
 from hardhat_event_streams.cli import cli
 
 

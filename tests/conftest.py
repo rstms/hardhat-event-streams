@@ -3,13 +3,12 @@ import os
 
 import pytest
 from fastapi.testclient import TestClient
-from seven_common.schema import Contract
-from sqlmodel import Session, SQLModel, create_engine
-from sqlmodel.pool import StaticPool
-
 from hardhat_event_streams.app import app
 from hardhat_event_streams.client import HardhatEventStreams
 from hardhat_event_streams.db import CRUD, get_db
+from seven_common.schema import Contract
+from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel.pool import StaticPool
 
 GATEWAY_PORT = 8082
 WEBHOOK_PORT = 8081

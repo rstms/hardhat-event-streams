@@ -4,7 +4,7 @@ build-backend = "flit_core.buildapi"
 requires_python = ">=3.10"
 
 [project]
-name = "hardhat-event-streams"
+name = "seven-streams"
 version = "0.0.6"
 authors = [{name = "Matt Krueger", email = "mkrueger@rstms.net"}]
 readme = {file = "README.md", content-type = "text/markdown"}
@@ -26,7 +26,7 @@ dependencies = [
   ]
 
 [tool.flit.module]
-name = "hardhat_event_streams"
+name = "seven_streams"
 
 [project.optional-dependencies]
 dev = [
@@ -51,7 +51,7 @@ docs = [
   ]
 
 [project.urls]
-  Home = "https://github.com/rstms/hardhat-event-streams"
+  Home = "https://github.com/SevenNFT/seven-streams"
 
 [tool.black]
 line-length = 120
@@ -60,4 +60,4 @@ line-length = 120
 profile = "black"
 
 [project.scripts]
-hes = "hardhat_event_streams.cli:cli"
+ses = "seven_streams.cli:cli"

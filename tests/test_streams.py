@@ -4,10 +4,9 @@ from uuid import uuid4
 
 import pytest
 from eth_utils import is_same_address
-from seven_common.streams import EventStream
-
 from hardhat_event_streams import HardhatStreamsError
 from hardhat_event_streams.schema import AddressResponse
+from seven_common.streams import EventStream
 
 
 @pytest.fixture
